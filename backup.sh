@@ -6,7 +6,6 @@
 set -e  # Exit on error
 
 # Configuration
-CONTAINER_NAME="carbon-postgres"
 BACKUP_DIR="./backups"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 BACKUP_FILE="${BACKUP_DIR}/carbon_intensity_${TIMESTAMP}.sql"
@@ -26,22 +25,24 @@ else
     exit 1
 fi
 
+# Verify required environment variables
+if [ -z "$DB_HOST" ] || [ -z "$DB_NAME" ] || [ -z "$DB_USER" ] || [ -z "$DB_PASSWORD" ]; then
+    echo -e "${RED}Error: Missing required environment variables (DB_HOST, DB_NAME, DB_USER, DB_PASSWORD)${NC}"
+    exit 1
+fi
+
 # Create backup directory if it doesn't exist
 mkdir -p "${BACKUP_DIR}"
 
 echo -e "${YELLOW}Starting backup at $(date)${NC}"
 echo "Database: ${DB_NAME}"
-echo "Container: ${CONTAINER_NAME}"
+echo "Host: ${DB_HOST}"
 
-# Check if container is running
-if ! docker ps | grep -q "${CONTAINER_NAME}"; then
-    echo -e "${RED}Error: Container ${CONTAINER_NAME} is not running${NC}"
-    exit 1
-fi
-
-# Create backup
+# Create backup using pg_dump
 echo "Creating backup..."
-docker exec "${CONTAINER_NAME}" pg_dump \
+PGPASSWORD="${DB_PASSWORD}" pg_dump \
+    -h "${DB_HOST}" \
+    -p "${DB_PORT:-5432}" \
     -U "${DB_USER}" \
     -d "${DB_NAME}" \
     --format=plain \

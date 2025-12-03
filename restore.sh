@@ -12,7 +12,6 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Configuration
-CONTAINER_NAME="carbon-postgres"
 BACKUP_DIR="./backups"
 
 # Load environment variables
@@ -23,9 +22,9 @@ else
     exit 1
 fi
 
-# Check if container is running
-if ! docker ps | grep -q "${CONTAINER_NAME}"; then
-    echo -e "${RED}Error: Container ${CONTAINER_NAME} is not running${NC}"
+# Verify required environment variables
+if [ -z "$DB_HOST" ] || [ -z "$DB_NAME" ] || [ -z "$DB_USER" ] || [ -z "$DB_PASSWORD" ]; then
+    echo -e "${RED}Error: Missing required environment variables (DB_HOST, DB_NAME, DB_USER, DB_PASSWORD)${NC}"
     exit 1
 fi
 
@@ -71,6 +70,7 @@ fi
 echo ""
 echo -e "${YELLOW}WARNING: This will overwrite the current database!${NC}"
 echo "Database: ${DB_NAME}"
+echo "Host: ${DB_HOST}"
 echo "Backup file: ${BACKUP_FILE}"
 echo ""
 echo -e "${RED}Type 'yes' to continue:${NC}"
@@ -86,7 +86,9 @@ echo -e "${YELLOW}Starting restore at $(date)${NC}"
 # Create a safety backup before restore
 SAFETY_BACKUP="${BACKUP_DIR}/pre_restore_$(date +"%Y%m%d_%H%M%S").sql.gz"
 echo "Creating safety backup first..."
-docker exec "${CONTAINER_NAME}" pg_dump \
+PGPASSWORD="${DB_PASSWORD}" pg_dump \
+    -h "${DB_HOST}" \
+    -p "${DB_PORT:-5432}" \
     -U "${DB_USER}" \
     -d "${DB_NAME}" \
     --format=plain \
@@ -102,14 +104,21 @@ gunzip -c "${BACKUP_FILE}" > "${TEMP_SQL}"
 
 # Drop existing tables (to avoid conflicts)
 echo "Dropping existing tables..."
-docker exec -i "${CONTAINER_NAME}" psql -U "${DB_USER}" -d "${DB_NAME}" <<-EOSQL
+PGPASSWORD="${DB_PASSWORD}" psql \
+    -h "${DB_HOST}" \
+    -p "${DB_PORT:-5432}" \
+    -U "${DB_USER}" \
+    -d "${DB_NAME}" \
+    <<-EOSQL
     DROP TABLE IF EXISTS public.live CASCADE;
     DROP TABLE IF EXISTS public.day CASCADE;
 EOSQL
 
 # Restore backup
 echo "Restoring database..."
-docker exec -i "${CONTAINER_NAME}" psql \
+PGPASSWORD="${DB_PASSWORD}" psql \
+    -h "${DB_HOST}" \
+    -p "${DB_PORT:-5432}" \
     -U "${DB_USER}" \
     -d "${DB_NAME}" \
     < "${TEMP_SQL}"
@@ -119,8 +128,8 @@ rm "${TEMP_SQL}"
 
 # Verify restore
 echo "Verifying restore..."
-LIVE_COUNT=$(docker exec "${CONTAINER_NAME}" psql -U "${DB_USER}" -d "${DB_NAME}" -t -c "SELECT COUNT(*) FROM public.live;" | xargs)
-DAY_COUNT=$(docker exec "${CONTAINER_NAME}" psql -U "${DB_USER}" -d "${DB_NAME}" -t -c "SELECT COUNT(*) FROM public.day;" | xargs)
+LIVE_COUNT=$(PGPASSWORD="${DB_PASSWORD}" psql -h "${DB_HOST}" -p "${DB_PORT:-5432}" -U "${DB_USER}" -d "${DB_NAME}" -t -c "SELECT COUNT(*) FROM public.live;" | xargs)
+DAY_COUNT=$(PGPASSWORD="${DB_PASSWORD}" psql -h "${DB_HOST}" -p "${DB_PORT:-5432}" -U "${DB_USER}" -d "${DB_NAME}" -t -c "SELECT COUNT(*) FROM public.day;" | xargs)
 
 echo -e "${GREEN}✓ Restore completed successfully${NC}"
 echo "Records in 'live' table: ${LIVE_COUNT}"

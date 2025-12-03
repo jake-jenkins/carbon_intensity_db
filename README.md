@@ -1,16 +1,15 @@
 # Carbon Intensity Scheduler
 
-A fully self-contained Node.js application with PostgreSQL that collects and processes UK carbon intensity data from the Carbon Intensity API on a scheduled basis.
+A Node.js application that collects and processes UK carbon intensity data from the Carbon Intensity API on a scheduled basis. Connects to your existing PostgreSQL database.
 
 ## Features
 
 - **Regional Update Job**: Runs every 30 minutes (at :00 and :30) to fetch current regional carbon intensity data
 - **Daily Totals Job**: Runs daily at 00:02 to aggregate the previous day's data
-- **Self-contained**: PostgreSQL database included in Docker Compose
-- **Automatic setup**: Database schema created automatically on first run
+- **External Database**: Connects to your existing PostgreSQL database
 - Environment-based configuration
 - Health checks and graceful shutdown handling
-- Data persistence with Docker volumes
+- Comprehensive backup scripts
 
 ## Scheduled Jobs
 
@@ -27,68 +26,51 @@ A fully self-contained Node.js application with PostgreSQL that collects and pro
 
 ## Prerequisites
 
-- Docker and Docker Compose (that's it!)
+- Docker and Docker Compose
+- PostgreSQL database (external - not included)
 
 ## Quick Start
 
-1. **Clone and setup**
+1. **Setup your database**
+   
+   Run the `init.sql` script on your PostgreSQL database to create the required tables:
    ```bash
-   cp .env.example .env
-   # Edit .env to change the default password
-   nano .env
+   psql -h your-db-host -U your-user -d your-database -f init.sql
    ```
 
-2. **Start the entire stack**
+2. **Configure credentials**
+   ```bash
+   cp .env.example .env
+   nano .env  # Add your database credentials
+   ```
+
+3. **Start the scheduler**
    ```bash
    docker-compose up -d
    ```
 
-3. **View logs**
+4. **View logs**
    ```bash
-   # View scheduler logs
-   docker-compose logs -f scheduler
-   
-   # View all logs
    docker-compose logs -f
    ```
 
-4. **Check status**
-   ```bash
-   docker-compose ps
-   ```
-
-That's it! Both the database and scheduler are now running.
+That's it! The scheduler is now running and will connect to your external database.
 
 ## Configuration
 
 Environment variables (set in `.env` file):
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DB_USER` | PostgreSQL user | `postgres` |
-| `DB_PASSWORD` | PostgreSQL password | `changeme` |
-| `DB_NAME` | Database name | `carbon_intensity` |
-| `DB_PORT` | PostgreSQL port (host) | `5432` |
-
-## Accessing the Database
-
-The PostgreSQL database is accessible from your host machine:
-
-```bash
-# Using psql
-psql -h localhost -p 5432 -U postgres -d carbon_intensity
-
-# Using a GUI tool (DBeaver, pgAdmin, etc.)
-# Host: localhost
-# Port: 5432
-# Database: carbon_intensity
-# User: postgres
-# Password: (whatever you set in .env)
-```
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `DB_HOST` | PostgreSQL host | **Yes** | - |
+| `DB_PORT` | PostgreSQL port | No | `5432` |
+| `DB_NAME` | Database name | **Yes** | - |
+| `DB_USER` | Database user | **Yes** | - |
+| `DB_PASSWORD` | Database password | **Yes** | - |
 
 ## Database Schema
 
-The application automatically creates two tables on first run:
+The application requires two tables in your PostgreSQL database. Run `init.sql` to create them:
 
 - **`public.live`**: Half-hourly regional data with carbon intensity and generation mix
 - **`public.day`**: Daily aggregated averages by region
@@ -96,17 +78,14 @@ The application automatically creates two tables on first run:
 ## Docker Commands
 
 ```bash
-# Start everything
+# Start the scheduler
 docker-compose up -d
 
-# Stop everything
+# Stop the scheduler
 docker-compose down
 
-# Stop and remove all data (WARNING: deletes database!)
-docker-compose down -v
-
-# Restart just the scheduler
-docker-compose restart scheduler
+# Restart the scheduler
+docker-compose restart
 
 # View real-time logs
 docker-compose logs -f
@@ -114,20 +93,13 @@ docker-compose logs -f
 # Rebuild after code changes
 docker-compose up -d --build
 
-# Check resource usage
-docker stats
+# Check status
+docker-compose ps
 ```
-
-## Data Persistence
-
-Database data is stored in a Docker volume named `postgres-data`. This means:
-- Data persists across container restarts
-- Data survives `docker-compose down`
-- Data is only deleted with `docker-compose down -v`
 
 ## Backup and Restore
 
-The application includes comprehensive backup and restore scripts.
+The application includes comprehensive backup and restore scripts that work with your external database.
 
 ### Manual Backup
 
@@ -223,24 +195,23 @@ Fetched 17 regions
 [2025-12-03T12:00:03.456Z] Regional Update job completed successfully
 ```
 
-The database has a health check that ensures it's ready before the scheduler starts.
-
 ## Troubleshooting
 
-**Containers won't start:**
+**Container won't start:**
 ```bash
 # Check logs
 docker-compose logs
 
-# Check if port 5432 is already in use
-lsof -i :5432  # macOS/Linux
-netstat -ano | findstr :5432  # Windows
+# Verify .env file exists and has correct credentials
+cat .env
 ```
 
 **Database connection fails:**
-- Wait 10-15 seconds after startup for health checks to pass
-- Check logs: `docker-compose logs postgres`
-- Verify .env file has correct credentials
+- Verify database host is accessible from Docker container
+- Check firewall rules allow connection from container
+- Verify database credentials are correct
+- Ensure database tables exist (run `init.sql`)
+- Check if database requires SSL (may need to modify connection config)
 
 **Jobs not running:**
 ```bash
@@ -248,17 +219,37 @@ netstat -ano | findstr :5432  # Windows
 docker-compose logs scheduler
 
 # Restart scheduler
-docker-compose restart scheduler
+docker-compose restart
 ```
 
-**Need to reset everything:**
-```bash
-# Stop and remove all containers and data
-docker-compose down -v
+**Backup scripts fail:**
+- Ensure Docker container is running: `docker ps`
+- Verify `.env` file has correct credentials
+- Check backup directory permissions
 
-# Start fresh
-docker-compose up -d
-```
+## Database Connection Security
+
+For production deployments:
+
+1. **Use SSL connections** - Modify `index.js` to add SSL configuration:
+   ```javascript
+   const pool = new Pool({
+     host: process.env.DB_HOST,
+     port: process.env.DB_PORT || 5432,
+     database: process.env.DB_NAME,
+     user: process.env.DB_USER,
+     password: process.env.DB_PASSWORD,
+     ssl: {
+       rejectUnauthorized: true,
+       ca: fs.readFileSync('/path/to/ca-cert.pem').toString(),
+     }
+   });
+   ```
+
+2. **Use read-only credentials where possible**
+3. **Restrict database access by IP**
+4. **Use strong passwords**
+5. **Enable database connection pooling limits**
 
 ## Architecture
 
@@ -280,21 +271,15 @@ docker-compose up -d
              │
              │ PostgreSQL Protocol
              │
-      ┌──────▼──────┐
-      │  PostgreSQL │
-      │  Container  │
-      │             │
-      │  Port: 5432 │
-      └─────────────┘
-             │
-             │ Volume Mount
-             │
-      ┌──────▼──────┐
-      │   Docker    │
-      │   Volume    │
-      │ (postgres-  │
-      │   data)     │
-      └─────────────┘
+      ┌──────▼──────────────────┐
+      │   Your PostgreSQL DB    │
+      │   (External/Managed)    │
+      │                         │
+      │   - RDS                 │
+      │   - Supabase            │
+      │   - Self-hosted         │
+      │   - etc.                │
+      └─────────────────────────┘
 ```
 
 ## Development
@@ -308,15 +293,33 @@ Then rebuild:
 docker-compose up -d --build
 ```
 
+## Network Considerations
+
+If your database is on the same Docker network:
+- Use the service/container name as `DB_HOST`
+- No need to expose ports
+
+If your database is external:
+- Use the full hostname or IP as `DB_HOST`
+- Ensure firewall allows connections
+- Consider using Docker's `host` network mode for direct access
+
 ## Production Deployment
 
 For production:
 
-1. **Change the password** in `.env`
-2. **Restrict database port** (remove port mapping if not needed externally)
-3. **Set up monitoring** (consider adding Prometheus/Grafana)
-4. **Configure backups** (automated pg_dump scripts)
-5. **Add log aggregation** (ELK stack, Loki, etc.)
+1. **Secure credentials** - Use Docker secrets or vault
+2. **Enable monitoring** - Add health check endpoints
+3. **Configure logging** - Use log aggregation (ELK, Loki)
+4. **Set resource limits** in docker-compose.yml:
+   ```yaml
+   deploy:
+     resources:
+       limits:
+         cpus: '0.5'
+         memory: 512M
+   ```
+5. **Use a process manager** - Consider Kubernetes for orchestration
 
 ## License
 
