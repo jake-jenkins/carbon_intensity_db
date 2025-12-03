@@ -189,8 +189,8 @@ console.log("Starting Carbon Intensity Scheduler...");
 cron.schedule("0,30 * * * *", regionalUpdateJob);
 console.log("✓ Regional Update job scheduled (every 30 minutes)");
 
-// Regional Daily Totals - at 00:02 daily
-cron.schedule("2 0 * * *", regionalDailyTotalsJob);
+// Regional Daily Totals - at 00:01 daily
+cron.schedule("1 0 * * *", regionalDailyTotalsJob);
 console.log("✓ Regional Daily Totals job scheduled (daily at 00:02)");
 
 console.log("Scheduler is running. Press Ctrl+C to exit.");
