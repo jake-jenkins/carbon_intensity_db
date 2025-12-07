@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS public.day (
     imports NUMERIC(10, 2),
     other NUMERIC(10, 2),
     fossil_total NUMERIC(10, 2),
+    json JSONB,
     created TIMESTAMP
 );
 
