@@ -4,10 +4,13 @@
   "description": "Scheduled jobs for carbon intensity data collection",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "import": "node import-csv.js"
   },
   "dependencies": {
     "axios": "^1.6.2",
+    "csv-parse": "^5.5.3",
+    "dotenv": "^16.3.1",
     "node-cron": "^3.0.3",
     "pg": "^8.11.3"
   },
